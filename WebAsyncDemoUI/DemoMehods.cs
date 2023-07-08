@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace WebAsyncDemoUI
@@ -15,6 +16,8 @@ namespace WebAsyncDemoUI
 
             output.Add("https://www.yahoo.com");
             output.Add("https://www.google.com");
+            output.Add("https://en.wikipedia.org/wiki/.NET_Framework");
+            output.Add("https://en.wikipedia.org/wiki/.NET");
             //output.Add("https://www.microsoft.com");
             //output.Add("https://www.cnn.com");
             //output.Add("https://www.codeproject.com");
@@ -36,8 +39,45 @@ namespace WebAsyncDemoUI
             return output;
         }
 
+        public static List<WebsiteDataModel> RunDownloadParallelSync()
+        {
+            List<string> websites = PrepData();
+            List<WebsiteDataModel> output = new List<WebsiteDataModel>();
+
+            // Paralled Libray. Parallel.ForEach - locks everything up until it's done. when run the UI be locked up, still is sync.
+            // DB might use it, but is not good for tasks
+            Parallel.ForEach<string>(websites, (site) =>  
+            {
+                WebsiteDataModel results = DownloadWebsite(site);
+                output.Add(results);
+            });
+            return output;
+        }
+
+        public static async Task<List<WebsiteDataModel>> RunDownloadParallelASyncV2(IProgress<ProgressReportModel> progress)
+        {
+            List<string> websites = PrepData();
+            List<WebsiteDataModel> output = new List<WebsiteDataModel>();
+            ProgressReportModel report = new ProgressReportModel(); // variable
+
+            await Task.Run(() =>
+            {
+                Parallel.ForEach<string>(websites, (site) =>
+                {
+                    WebsiteDataModel results = DownloadWebsite(site);
+                    output.Add(results);
+
+                    report.SitesDownloaded = output;
+                    report.PercentageComplete = (output.Count * 100) / websites.Count;
+                    progress.Report(report);
+                });
+            });
+
+            return output;
+        }
+
         // async method: xxxAsync()
-        public static async Task<List<WebsiteDataModel>> RunDownloadAsync(IProgress<ProgressReportModel> progress) // No void use Task instead. But only one exception - used in Event
+        public static async Task<List<WebsiteDataModel>> RunDownloadAsync(IProgress<ProgressReportModel> progress, CancellationToken cancellationToken) // No void use Task instead. But only one exception - used in Event
         {
             List<string> websites = PrepData();
             List<WebsiteDataModel> output = new List<WebsiteDataModel>();
@@ -47,6 +87,8 @@ namespace WebAsyncDemoUI
             {
                 WebsiteDataModel results = await DownloadWebsiteAsync(site);
                 output.Add(results);
+
+                cancellationToken.ThrowIfCancellationRequested(); // throw an exception here, catch the exception in the MainWindow btn click event ->
 
                 report.SitesDownloaded = output;
                 report.PercentageComplete = (output.Count * 100) / websites.Count;

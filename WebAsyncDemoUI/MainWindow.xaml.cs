@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -21,6 +23,8 @@ namespace WebAsyncDemoUI
     /// </summary>
     public partial class MainWindow : Window
     {
+        CancellationTokenSource cts = new CancellationTokenSource();
+
         public MainWindow()
         {
             InitializeComponent();
@@ -30,7 +34,7 @@ namespace WebAsyncDemoUI
         {
             var watch = System.Diagnostics.Stopwatch.StartNew(); // more precise than DateTime.Now()
             //RunDownloadSync();
-            var results = DemoMehods.RunDownloadSync();
+            var results = DemoMehods.RunDownloadParallelSync();
             PrintResults(results);
 
             watch.Stop();
@@ -40,13 +44,22 @@ namespace WebAsyncDemoUI
 
         private async void executeASync_Click(object sender, RoutedEventArgs e)  // Event - void
         {
+            // Before watch, create an instant event.
             Progress<ProgressReportModel> progress = new Progress<ProgressReportModel>();
-            progress.ProgressChanged += ReportProgress;// Create an event
+            progress.ProgressChanged += ReportProgress;// Create an event (wire up to the ReportProgress event)
+
             var watch = System.Diagnostics.Stopwatch.StartNew(); // more precise than DateTime.Now()
 
             //await RunDownloadAsync();
-            var results = await DemoMehods.RunDownloadAsync(progress);
-            PrintResults(results);
+            try
+            {
+                var results = await DemoMehods.RunDownloadAsync(progress, cts.Token); // pass in cts.Token
+                PrintResults(results);
+            }
+            catch (OperationCanceledException)
+            {
+                resultsWindow.Text += $"The async download was cancelled. { Environment.NewLine}";
+            }
 
             watch.Stop();
             var elapsedMs = watch.ElapsedMilliseconds;
@@ -61,9 +74,12 @@ namespace WebAsyncDemoUI
 
         private async void executeParalleASync_Click(object sender, RoutedEventArgs e)  // Event - void
         {
+            Progress<ProgressReportModel> progress = new Progress<ProgressReportModel>();
+            progress.ProgressChanged += ReportProgress;
+
             var watch = System.Diagnostics.Stopwatch.StartNew(); // more precise than DateTime.Now()
             //await RunDownloadAsync();
-            var results = await DemoMehods.RunDownloadParalleAsync();
+            var results = await DemoMehods.RunDownloadParallelASyncV2(progress); // able to control our UI
             PrintResults(results);
 
             watch.Stop();
@@ -71,7 +87,10 @@ namespace WebAsyncDemoUI
             resultsWindow.Text += $"Total execution time: {elapsedMs}";
         }
 
-        // cancelOperation()
+        private void cancelOperation_Click(object sender, RoutedEventArgs e)
+        {
+            cts.Cancel();
+        }
 
         private void PrintResults(List<WebsiteDataModel> results)
         {
@@ -81,6 +100,7 @@ namespace WebAsyncDemoUI
                 resultsWindow.Text += $"{item.WebsiteUrl} downloaded: {item.WebsiteData.Length} characters long.{Environment.NewLine}";
             }
         }
-       
+
+        
     }
 }
